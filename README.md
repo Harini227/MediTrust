@@ -32,7 +32,7 @@ mongod --dbpath "C:\data\db"
 npm run dev
 ```
 
-5. Open the frontend at: http://localhost:5000/meditrust.html
+
 
 Notes
 - The app falls back to a local MongoDB URI when `MONGO_URI` is not provided.
