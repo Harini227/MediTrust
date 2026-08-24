@@ -62,7 +62,7 @@ app.use('/api', routes);
 
 /* Root */
 app.get('/', (req, res) => {
-  res.json({ success: true, message: 'MediTrust API root. See /api/health.' });
+  res.redirect('/meditrust.html');
 });
 
 /* 404 + error handling - must be last */
