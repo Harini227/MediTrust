@@ -47,6 +47,18 @@ app.use(
   })
 );
 
+const connectDB = require('./config/db');
+
+// Connect to database on API requests (reuses cached connection)
+app.use('/api', async (req, res, next) => {
+  try {
+    await connectDB();
+    next();
+  } catch (err) {
+    next(err);
+  }
+});
+
 /* Rate limiting on all /api routes */
 app.use('/api', apiLimiter);
 

@@ -10,6 +10,7 @@ let server;
 
   server = app.listen(config.port, () => {
     logger.info(`MediTrust API running in ${config.env} mode on port ${config.port}`);
+    console.log(`\n  ➜  Local:   http://localhost:${config.port}/meditrust.html\n`);
   });
 })();
 
