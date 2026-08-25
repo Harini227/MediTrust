@@ -8,3 +8,4 @@ server/logs/*
 npm-debug.log*
 
 .vercel
+.vercel_backup
