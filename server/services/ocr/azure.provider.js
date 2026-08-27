@@ -22,15 +22,24 @@ async function extract(publicFilePath) {
     throw new AppError('Azure Document Intelligence is not configured', 500);
   }
 
-  // publicFilePath looks like "/uploads/filename.ext" - resolve to actual disk path
-  const filename = path.basename(publicFilePath);
-  const fullPath = path.join(process.cwd(), config.upload.dir, filename);
+  let fileBuffer;
+  if (publicFilePath.startsWith('http://') || publicFilePath.startsWith('https://')) {
+    const response = await fetch(publicFilePath);
+    if (!response.ok) {
+      throw new AppError('Failed to fetch prescription image from storage', 500);
+    }
+    fileBuffer = Buffer.from(await response.arrayBuffer());
+  } else {
+    // publicFilePath looks like "/uploads/filename.ext" - resolve to actual disk path
+    const filename = path.basename(publicFilePath);
+    const fullPath = path.join(process.cwd(), config.upload.dir, filename);
 
-  if (!fs.existsSync(fullPath)) {
-    throw new AppError('Uploaded file not found for OCR processing', 404);
+    if (!fs.existsSync(fullPath)) {
+      throw new AppError('Uploaded file not found for OCR processing', 404);
+    }
+
+    fileBuffer = fs.readFileSync(fullPath);
   }
-
-  const fileBuffer = fs.readFileSync(fullPath);
   const endpoint = config.azureDocIntel.endpoint.replace(/\/$/, '');
 
   // Step 1: submit the document for analysis

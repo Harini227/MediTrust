@@ -1,4 +1,4 @@
-﻿
+
 > <script>
   // â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•â•
   // MEDITRUST API CLIENT
@@ -1334,7 +1334,7 @@ class="detail-val">${c.sideEffects||'None reported'}</span></div>
     <div class="detail-section">
       <div class="detail-section-title">Prescription</div>
       <div class="rx-image-container">
-        ${c.prescriptionFile ? `<img src="http://localhost:5000${c.prescriptionFile}" alt="Prescription">` :
+        ${c.prescriptionFile ? `<img src="${c.prescriptionFile.startsWith('http') ? c.prescriptionFile : `http://localhost:5000${c.prescriptionFile}`}" alt="Prescription">` :
         `<div class="rx-placeholder"><p>No prescription image</p></div>`}
       </div>
     </div>
@@ -1662,7 +1662,7 @@ class="detail-val">${c.sideEffects||'None'}</span></div>
     <div class="detail-section">
       <div class="detail-section-title">Prescription</div>
       <div class="rx-image-container">
-        ${c.prescriptionFile ? `<img src="http://localhost:5000${c.prescriptionFile}" alt="Prescription">` :
+        ${c.prescriptionFile ? `<img src="${c.prescriptionFile.startsWith('http') ? c.prescriptionFile : `http://localhost:5000${c.prescriptionFile}`}" alt="Prescription">` :
         `<div class="rx-placeholder"><p>No prescription image</p></div>`}
       </div>
     </div>
@@ -2204,7 +2204,7 @@ ${c.sideEffects}</p>`:''}
     <div class="detail-section">
       <div class="detail-section-title">Prescription</div>
       <div class="rx-image-container">
-        <img src="http://localhost:5000${c.prescriptionFile}" alt="Prescription">
+        <img src="${c.prescriptionFile.startsWith('http') ? c.prescriptionFile : `http://localhost:5000${c.prescriptionFile}`}" alt="Prescription">
       </div>
     </div>`:''}
     ${c.ocrResult&&c.ocrResult.medicines&&c.ocrResult.medicines.length?`

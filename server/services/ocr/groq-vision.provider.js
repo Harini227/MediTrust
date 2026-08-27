@@ -41,15 +41,28 @@ async function extract(publicFilePath) {
     };
   }
 
-  const filename = path.basename(publicFilePath);
-  const fullPath = path.join(process.cwd(), config.upload.dir, filename);
+  let fileBuffer;
+  let ext;
 
-  if (!fs.existsSync(fullPath)) {
-    throw new AppError('Uploaded file not found for OCR processing', 404);
+  if (publicFilePath.startsWith('http://') || publicFilePath.startsWith('https://')) {
+    const response = await fetch(publicFilePath);
+    if (!response.ok) {
+      throw new AppError('Failed to fetch prescription image from storage', 500);
+    }
+    fileBuffer = Buffer.from(await response.arrayBuffer());
+    ext = path.extname(new URL(publicFilePath).pathname).slice(1).toLowerCase();
+  } else {
+    const filename = path.basename(publicFilePath);
+    const fullPath = path.join(process.cwd(), config.upload.dir, filename);
+
+    if (!fs.existsSync(fullPath)) {
+      throw new AppError('Uploaded file not found for OCR processing', 404);
+    }
+
+    fileBuffer = fs.readFileSync(fullPath);
+    ext = path.extname(fullPath).slice(1).toLowerCase();
   }
 
-  const fileBuffer = fs.readFileSync(fullPath);
-  const ext = path.extname(fullPath).slice(1).toLowerCase();
   const mimeType = ext === 'jpg' ? 'jpeg' : ext; // normalize .jpg -> jpeg
   const base64Image = fileBuffer.toString('base64');
   const dataUri = `data:image/${mimeType};base64,${base64Image}`;

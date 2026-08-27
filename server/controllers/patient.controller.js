@@ -4,7 +4,7 @@ const Report = require('../database/models/Report.model');
 const User = require('../database/models/User.model');
 const { AppError } = require('../middleware/errorHandler');
 const catchAsync = require('../utils/catchAsync');
-const { getPublicPath } = require('../services/storage/local.storage');
+const storageService = require('../services/storage');
 
 /**
  * POST /api/patients/cases
@@ -68,10 +68,12 @@ exports.uploadDocuments = catchAsync(async (req, res, next) => {
   const labReportFiles = req.files?.labReports || [];
 
   if (prescriptionFile) {
-    existingCase.prescriptionFile = getPublicPath(prescriptionFile.filename);
+    existingCase.prescriptionFile = await storageService.uploadFile(prescriptionFile);
   }
   if (labReportFiles.length > 0) {
-    existingCase.labReportFiles = labReportFiles.map((f) => getPublicPath(f.filename));
+    existingCase.labReportFiles = await Promise.all(
+      labReportFiles.map((f) => storageService.uploadFile(f))
+    );
   }
 
   // Run OCR (dummy provider for MVP) as soon as a prescription is uploaded

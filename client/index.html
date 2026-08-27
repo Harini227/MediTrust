@@ -4716,7 +4716,7 @@
   <div class="detail-section">
     <div class="detail-section-title">Prescription</div>
     <div class="rx-image-container">
-      ${c.prescriptionFile ? `<img src="https://meditrust-ek9q.onrender.com${c.prescriptionFile}" alt="Prescription">` :
+      ${c.prescriptionFile ? `<img src="${c.prescriptionFile.startsWith('http') ? c.prescriptionFile : `https://meditrust-ek9q.onrender.com${c.prescriptionFile}`}" alt="Prescription">` :
           `<div class="rx-placeholder"><p>No prescription image</p></div>`}
     </div>
   </div>
@@ -5011,7 +5011,7 @@
   <div class="detail-section">
     <div class="detail-section-title">Prescription</div>
     <div class="rx-image-container">
-      ${c.prescriptionFile ? `<img src="https://meditrust-ek9q.onrender.com${c.prescriptionFile}" alt="Prescription">` :
+      ${c.prescriptionFile ? `<img src="${c.prescriptionFile.startsWith('http') ? c.prescriptionFile : `https://meditrust-ek9q.onrender.com${c.prescriptionFile}`}" alt="Prescription">` :
           `<div class="rx-placeholder"><p>No prescription image</p></div>`}
     </div>
   </div>
@@ -5490,7 +5490,7 @@
   <div class="detail-section">
     <div class="detail-section-title">Prescription</div>
     <div class="rx-image-container">
-      <img src="https://meditrust-ek9q.onrender.com${c.prescriptionFile}" alt="Prescription">
+      <img src="${c.prescriptionFile.startsWith('http') ? c.prescriptionFile : `https://meditrust-ek9q.onrender.com${c.prescriptionFile}`}" alt="Prescription">
     </div>
   </div>`: ''}
   ${c.ocrResult && c.ocrResult.medicines && c.ocrResult.medicines.length ? `
