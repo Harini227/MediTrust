@@ -24,6 +24,7 @@ router.get('/health', (req, res) => {
 
 router.use('/auth', require('./auth.routes'));                // Phase 3
 router.use('/patients', require('./patient.routes'));         // Phase 5
+router.use('/activity', require('./activity.routes'));         // Activity Tracker
 router.use('/ai', require('./ai.routes'));                    // AI/ML module (test endpoint)
 router.use('/doctors', require('./doctor.routes'));           // Phase 6
 router.use('/chief-doctor', require('./chief.routes'));       // Phase 7

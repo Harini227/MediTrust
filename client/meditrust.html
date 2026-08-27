@@ -3195,6 +3195,153 @@
       color: var(--n-400);
       margin-top: 1px;
     }
+
+    /* ══════════════════════════════════════════════════════
+       ACTIVITY TRACKER COMPONENT
+    ══════════════════════════════════════════════════════ */
+    .tracker-metrics-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 16px;
+      margin-bottom: 24px;
+    }
+
+    .tracker-metric-card {
+      background: var(--bg);
+      padding: 16px;
+      border-radius: var(--r);
+      text-align: center;
+      border: 1px solid var(--border);
+      transition: transform 0.2s ease, box-shadow 0.2s ease;
+    }
+
+    .tracker-metric-card:hover {
+      transform: translateY(-2px);
+      box-shadow: var(--sh-xs);
+    }
+
+    .tracker-metric-val {
+      font-size: 28px;
+      font-weight: 800;
+      color: var(--n-900);
+      font-family: var(--font-heading);
+      line-height: 1.2;
+    }
+
+    .tracker-metric-label {
+      font-size: 12px;
+      color: var(--n-500);
+      margin-top: 6px;
+      font-weight: 600;
+    }
+
+    .step-progress-container {
+      margin-bottom: 24px;
+      background: var(--bg-2);
+      border-radius: var(--r-sm);
+      padding: 16px;
+      border: 1px solid var(--border);
+    }
+
+    .step-progress-header {
+      display: flex;
+      justify-content: space-between;
+      margin-bottom: 8px;
+    }
+
+    .step-progress-bar-bg {
+      width: 100%;
+      height: 8px;
+      background: var(--n-200);
+      border-radius: 4px;
+      overflow: hidden;
+    }
+
+    .step-progress-bar-fill {
+      width: 0%;
+      height: 100%;
+      background: linear-gradient(90deg, var(--brand-blue) 0%, var(--brand-blue-mid) 100%);
+      transition: width 0.4s cubic-bezier(0.34, 1.56, 0.64, 1);
+      border-radius: 4px;
+    }
+
+    .sensor-alert-banner {
+      background: var(--c-warning-bg);
+      border: 1px solid rgba(245, 158, 11, 0.25);
+      color: var(--c-warning-dk);
+      padding: 12px 16px;
+      border-radius: var(--r-sm);
+      margin-bottom: 20px;
+      font-size: 13px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      flex-wrap: wrap;
+      gap: 12px;
+      animation: fadeIn 0.3s ease;
+    }
+
+    .sensor-alert-banner span {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-weight: 500;
+    }
+
+    .tracker-history-item {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 14px 20px;
+      border-bottom: 1px solid var(--border);
+      transition: background 0.15s ease;
+    }
+
+    .tracker-history-item:last-child {
+      border-bottom: none;
+    }
+
+    .tracker-history-item:hover {
+      background: var(--bg);
+    }
+
+    .history-meta {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+
+    .history-date {
+      font-size: 13px;
+      font-weight: 700;
+      color: var(--n-800);
+    }
+
+    .history-duration {
+      font-size: 11px;
+      color: var(--n-400);
+      font-family: monospace;
+    }
+
+    .history-stats {
+      display: flex;
+      gap: 16px;
+      font-size: 13px;
+      font-weight: 600;
+      color: var(--n-700);
+    }
+
+    .history-stat-val {
+      color: var(--brand-blue);
+      font-weight: 700;
+    }
+
+    @media (max-width: 768px) {
+      .tracker-metrics-grid {
+        grid-template-columns: 1fr;
+        gap: 12px;
+      }
+    }
   </style>
   <script src="https://checkout.razorpay.com/v1/checkout.js"></script>
 </head>
@@ -3590,6 +3737,11 @@
 
       getNotifications: () => apiRequest('/notifications'),
       markNotificationRead: (id) => apiRequest(`/notifications/${id}/read`, { method: 'PATCH' }),
+
+      saveActivitySession: (payload) =>
+        apiRequest('/activity/session', { method: 'POST', body: payload }),
+      getActivityToday: () => apiRequest('/activity/today'),
+      getActivityHistory: () => apiRequest('/activity/history'),
     };
 
     // ══════════════════════════════════════
@@ -3661,6 +3813,654 @@
       age: '', gender: '', symptoms: '', sideEffects: [], otherSE: '',
       selectedDoctors: [], paid: false
     };
+
+    // ══════════════════════════════════════
+    // ACTIVITY TRACKER STATE & CORE LOGIC
+    // ══════════════════════════════════════
+    let mtTrackerState = {
+      isTracking: false,
+      isPaused: false,
+      isDemoMode: false,
+      steps: 0,
+      distanceKm: 0,
+      estimatedCalories: 0,
+      startTime: null,
+      durationSeconds: 0,
+      timerIntervalId: null,
+      watchPositionId: null,
+      weight: 70,
+      stepGoal: 10000,
+      lastLocation: null,
+      demoIntervalId: null,
+      
+      // Step detection algorithm internal states
+      baselineM: 0,
+      lastStepTime: 0,
+      stepThreshold: 1.5, // magnitude threshold (m/s^2)
+      minStepInterval: 350, // minimum time between steps (ms)
+      isAboveThreshold: false,
+
+      // Summary data
+      todaySummary: { steps: 0, distanceKm: 0, estimatedCalories: 0 }
+    };
+
+    function renderActivityTrackerHtml() {
+      return `
+      <div class="card" style="margin-bottom: 22px;">
+        <div class="card-header">
+          <div>
+            <h3>Activity & Wellness</h3>
+            <p class="text-sm text-muted" style="margin-top: 4px;">Track your daily activity and goal progress</p>
+          </div>
+          <div>
+            <span class="badge" id="tracker-status-badge" style="background: var(--brand-blue-pale); color: var(--brand-blue); padding: 4px 10px; border-radius: var(--r-sm); font-size: 12px; font-weight: 600;">Ready to track</span>
+          </div>
+        </div>
+        <div class="card-body">
+          <!-- Step Goal Progress -->
+          <div class="step-progress-container">
+            <div class="step-progress-header">
+              <span class="text-sm" style="font-weight: 600; color: var(--n-700);">Today's Progress</span>
+              <span class="text-sm text-muted" id="tracker-goal-text">0 / ${mtTrackerState.stepGoal.toLocaleString()} steps</span>
+            </div>
+            <div class="step-progress-bar-bg">
+              <div id="tracker-progress-bar" class="step-progress-bar-fill"></div>
+            </div>
+          </div>
+
+          <!-- Metrics Grid -->
+          <div class="tracker-metrics-grid">
+            <div class="tracker-metric-card">
+              <div class="tracker-metric-val" id="metric-steps">${mtTrackerState.steps}</div>
+              <div class="tracker-metric-label">Steps</div>
+            </div>
+            <div class="tracker-metric-card">
+              <div class="tracker-metric-val" id="metric-distance">${mtTrackerState.distanceKm.toFixed(2)}</div>
+              <div class="tracker-metric-label">Distance (km)</div>
+            </div>
+            <div class="tracker-metric-card">
+              <div class="tracker-metric-val" id="metric-calories">${Math.round(mtTrackerState.estimatedCalories)}</div>
+              <div class="tracker-metric-label">Estimated Calories (kcal)</div>
+            </div>
+          </div>
+
+          <!-- Simulation / Sensor Warnings -->
+          <div id="sensor-alert-container" class="sensor-alert-banner" style="display: none;">
+            <span>
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" width="16" height="16" style="vertical-align: middle; margin-right: 4px;"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3Z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+              <span id="sensor-alert-msg">Live sensors (motion/location) are not active.</span>
+            </span>
+            <button class="btn btn-sm btn-amber" id="btn-sensor-demo" onclick="enableDemoMode()" style="padding: 4px 10px; font-size: 11px;">Use Demo Mode</button>
+          </div>
+
+          <!-- Live tracker controls -->
+          <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 12px; margin-bottom: 12px;">
+            <div style="display: flex; gap: 8px; flex-wrap: wrap;">
+              <button class="btn btn-primary" id="btn-tracker-start" onclick="toggleTracking()">Start Tracking</button>
+              <button class="btn btn-outline" id="btn-tracker-pause" onclick="pauseTracking()" disabled>Pause</button>
+              <button class="btn btn-outline" id="btn-tracker-reset" onclick="resetTracking()" disabled>Reset</button>
+              <button class="btn btn-success" id="btn-tracker-save" onclick="saveTrackingSession()" style="display: none;">Save Session</button>
+            </div>
+            <div id="tracker-duration" class="text-sm text-muted" style="font-weight: 700; font-family: monospace; font-size: 14px; background: var(--bg-2); padding: 6px 12px; border-radius: var(--r-xs); border: 1px solid var(--border);">00:00</div>
+          </div>
+
+          <!-- Privacy & Settings footer -->
+          <div style="display: flex; justify-content: space-between; align-items: center; border-top: 1px solid var(--border); padding-top: 16px; margin-top: 16px; flex-wrap: wrap; gap: 8px;">
+            <span class="text-xs text-muted" style="font-size: 11px;">🔒 Privacy Note: Location data is processed locally and never stored. Only summaries are saved.</span>
+            <button class="btn btn-sm btn-outline" onclick="toggleTrackerSettings()" style="padding: 4px 10px; font-size: 11px;">Settings</button>
+          </div>
+
+          <!-- Settings Collapsible Panel -->
+          <div id="tracker-settings-panel" style="display: none; background: var(--bg-2); border-radius: var(--r); padding: 16px; margin-top: 16px; border: 1px solid var(--border);">
+            <h4 style="font-size: 13px; font-weight: 800; color: var(--n-800); margin-bottom: 12px;">Tracker Settings</h4>
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+              <div class="form-group" style="margin-bottom: 0;">
+                <label class="form-label" style="font-size: 11px; margin-bottom: 4px; display: block; font-weight: 600;">User Weight (kg)</label>
+                <input type="number" class="form-control" id="tracker-weight-input" value="${mtTrackerState.weight}" style="padding: 6px 12px; font-size: 13px; border-radius: var(--r-xs); height: auto;" onchange="updateTrackerSettings()">
+              </div>
+              <div class="form-group" style="margin-bottom: 0;">
+                <label class="form-label" style="font-size: 11px; margin-bottom: 4px; display: block; font-weight: 600;">Daily Step Goal</label>
+                <input type="number" class="form-control" id="tracker-goal-input" value="${mtTrackerState.stepGoal}" style="padding: 6px 12px; font-size: 13px; border-radius: var(--r-xs); height: auto;" onchange="updateTrackerSettings()">
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- History card -->
+      <div class="card" id="tracker-history-card" style="margin-bottom: 22px; display: none;">
+        <div class="card-header">
+          <h3>Today's History Sessions</h3>
+        </div>
+        <div class="card-body" id="tracker-history-list" style="padding: 0;">
+          <!-- History sessions populated dynamically -->
+        </div>
+      </div>
+      `;
+    }
+
+    function syncTrackerUI() {
+      const stepsEl = document.getElementById('metric-steps');
+      const distEl = document.getElementById('metric-distance');
+      const calEl = document.getElementById('metric-calories');
+      const durEl = document.getElementById('tracker-duration');
+      const progressEl = document.getElementById('tracker-progress-bar');
+      const goalEl = document.getElementById('tracker-goal-text');
+      const statusBadge = document.getElementById('tracker-status-badge');
+      
+      const startBtn = document.getElementById('btn-tracker-start');
+      const pauseBtn = document.getElementById('btn-tracker-pause');
+      const resetBtn = document.getElementById('btn-tracker-reset');
+      const saveBtn = document.getElementById('btn-tracker-save');
+      const alertContainer = document.getElementById('sensor-alert-container');
+      const alertMsg = document.getElementById('sensor-alert-msg');
+      const weightInput = document.getElementById('tracker-weight-input');
+      const goalInput = document.getElementById('tracker-goal-input');
+
+      // Update metrics
+      if (stepsEl) stepsEl.innerText = mtTrackerState.steps;
+      if (distEl) distEl.innerText = mtTrackerState.distanceKm.toFixed(2);
+      if (calEl) calEl.innerText = Math.round(mtTrackerState.estimatedCalories);
+      if (durEl) durEl.innerText = formatTrackerDuration(mtTrackerState.durationSeconds);
+      
+      // Update inputs
+      if (weightInput) weightInput.value = mtTrackerState.weight;
+      if (goalInput) goalInput.value = mtTrackerState.stepGoal;
+
+      // Update goal progress bar
+      const totalStepsToday = (mtTrackerState.todaySummary?.steps || 0) + (mtTrackerState.isTracking ? mtTrackerState.steps : 0);
+      if (goalEl) goalEl.innerText = `${totalStepsToday.toLocaleString()} / ${mtTrackerState.stepGoal.toLocaleString()} steps`;
+      
+      if (progressEl) {
+        const pct = Math.min(100, (totalStepsToday / mtTrackerState.stepGoal) * 100);
+        progressEl.style.width = `${pct}%`;
+      }
+
+      // Update status badge & buttons
+      if (statusBadge) {
+        if (mtTrackerState.isTracking) {
+          if (mtTrackerState.isPaused) {
+            statusBadge.innerText = 'Tracking paused';
+            statusBadge.style.background = 'var(--c-warning-bg)';
+            statusBadge.style.color = 'var(--c-warning-dk)';
+          } else {
+            statusBadge.innerText = mtTrackerState.isDemoMode ? 'Simulating activity...' : 'Tracking activity...';
+            statusBadge.style.background = 'var(--c-success-bg)';
+            statusBadge.style.color = 'var(--c-success-dk)';
+          }
+        } else {
+          statusBadge.innerText = 'Ready to track';
+          statusBadge.style.background = 'var(--brand-blue-pale)';
+          statusBadge.style.color = 'var(--brand-blue)';
+        }
+      }
+
+      if (startBtn) {
+        if (mtTrackerState.isTracking) {
+          startBtn.innerText = 'Stop Tracking';
+          startBtn.className = 'btn btn-danger';
+        } else {
+          startBtn.innerText = 'Start Tracking';
+          startBtn.className = 'btn btn-primary';
+        }
+      }
+
+      if (pauseBtn) {
+        pauseBtn.disabled = !mtTrackerState.isTracking;
+        pauseBtn.innerText = mtTrackerState.isPaused ? 'Resume' : 'Pause';
+      }
+
+      if (resetBtn) {
+        resetBtn.disabled = mtTrackerState.isTracking || mtTrackerState.steps === 0;
+      }
+
+      if (saveBtn) {
+        saveBtn.style.display = (!mtTrackerState.isTracking && mtTrackerState.steps > 0) ? 'inline-block' : 'none';
+      }
+
+      // Handle desktop warning banner visibility
+      if (alertContainer) {
+        const motionSupported = typeof DeviceMotionEvent !== 'undefined';
+        const geoSupported = typeof navigator.geolocation !== 'undefined';
+
+        if (!motionSupported || !geoSupported) {
+          alertContainer.style.display = 'flex';
+          if (alertMsg) {
+            alertMsg.innerText = `Live sensors (${!motionSupported ? 'DeviceMotion' : ''}${!motionSupported && !geoSupported ? '/' : ''}${!geoSupported ? 'Geolocation' : ''}) are unavailable on this device.`;
+          }
+        } else if (mtTrackerState.isDemoMode) {
+          alertContainer.style.display = 'flex';
+          if (alertMsg) {
+            alertMsg.innerText = 'Demo Mode active (simulating walking motion).';
+          }
+          const demoBtn = document.getElementById('btn-sensor-demo');
+          if (demoBtn) {
+            demoBtn.innerText = 'Disable Demo Mode';
+            demoBtn.className = 'btn btn-sm btn-outline';
+          }
+        } else {
+          alertContainer.style.display = 'none';
+        }
+      }
+    }
+
+    function formatTrackerDuration(sec) {
+      const m = Math.floor(sec / 60).toString().padStart(2, '0');
+      const s = (sec % 60).toString().padStart(2, '0');
+      return `${m}:${s}`;
+    }
+
+    function toggleTrackerSettings() {
+      const panel = document.getElementById('tracker-settings-panel');
+      if (panel) {
+        panel.style.display = panel.style.display === 'none' ? 'block' : 'none';
+      }
+    }
+
+    function updateTrackerSettings() {
+      const wVal = document.getElementById('tracker-weight-input')?.value;
+      const gVal = document.getElementById('tracker-goal-input')?.value;
+      if (wVal) mtTrackerState.weight = Math.max(1, Number(wVal));
+      if (gVal) mtTrackerState.stepGoal = Math.max(1, Number(gVal));
+      
+      if (mtTrackerState.steps > 0) {
+        mtTrackerState.estimatedCalories = mtTrackerState.steps * 0.04 * (mtTrackerState.weight / 70);
+      }
+      syncTrackerUI();
+    }
+
+    function toggleTracking() {
+      if (mtTrackerState.isTracking) {
+        stopTracking();
+      } else {
+        startTracking();
+      }
+    }
+
+    function startTracking() {
+      if (!mtTrackerState.isPaused) {
+        mtTrackerState.steps = 0;
+        mtTrackerState.distanceKm = 0;
+        mtTrackerState.estimatedCalories = 0;
+        mtTrackerState.durationSeconds = 0;
+        mtTrackerState.startTime = Date.now();
+        mtTrackerState.lastLocation = null;
+      }
+
+      mtTrackerState.isTracking = true;
+      mtTrackerState.isPaused = false;
+
+      if (!mtTrackerState.isDemoMode) {
+        requestSensorPermissions();
+      } else {
+        startDemoSimulation();
+      }
+
+      if (mtTrackerState.timerIntervalId) clearInterval(mtTrackerState.timerIntervalId);
+      mtTrackerState.timerIntervalId = setInterval(() => {
+        if (!mtTrackerState.isPaused) {
+          mtTrackerState.durationSeconds++;
+          const durEl = document.getElementById('tracker-duration');
+          if (durEl) durEl.innerText = formatTrackerDuration(mtTrackerState.durationSeconds);
+        }
+      }, 1000);
+
+      syncTrackerUI();
+    }
+
+    function stopTracking() {
+      mtTrackerState.isTracking = false;
+      
+      stopSensorListeners();
+      if (mtTrackerState.timerIntervalId) {
+        clearInterval(mtTrackerState.timerIntervalId);
+        mtTrackerState.timerIntervalId = null;
+      }
+      if (mtTrackerState.demoIntervalId) {
+        clearInterval(mtTrackerState.demoIntervalId);
+        mtTrackerState.demoIntervalId = null;
+      }
+
+      syncTrackerUI();
+    }
+
+    function pauseTracking() {
+      if (!mtTrackerState.isTracking) return;
+      
+      mtTrackerState.isPaused = !mtTrackerState.isPaused;
+      
+      if (mtTrackerState.isPaused) {
+        stopSensorListeners();
+      } else {
+        if (mtTrackerState.isDemoMode) {
+          startDemoSimulation();
+        } else {
+          startSensorListeners();
+        }
+      }
+      syncTrackerUI();
+    }
+
+    function resetTracking() {
+      mtTrackerState.isTracking = false;
+      mtTrackerState.isPaused = false;
+      mtTrackerState.steps = 0;
+      mtTrackerState.distanceKm = 0;
+      mtTrackerState.estimatedCalories = 0;
+      mtTrackerState.durationSeconds = 0;
+      mtTrackerState.lastLocation = null;
+      
+      stopSensorListeners();
+      if (mtTrackerState.timerIntervalId) {
+        clearInterval(mtTrackerState.timerIntervalId);
+        mtTrackerState.timerIntervalId = null;
+      }
+      if (mtTrackerState.demoIntervalId) {
+        clearInterval(mtTrackerState.demoIntervalId);
+        mtTrackerState.demoIntervalId = null;
+      }
+
+      syncTrackerUI();
+      toast('Activity tracker reset successfully', 'info');
+    }
+
+    function requestSensorPermissions() {
+      if (navigator.geolocation) {
+        startGeoListener();
+      } else {
+        toast('Geolocation not supported on this browser', 'warning');
+      }
+
+      const hasMotion = typeof DeviceMotionEvent !== 'undefined';
+      const needsIOSPermission = hasMotion && typeof DeviceMotionEvent.requestPermission === 'function';
+
+      if (needsIOSPermission) {
+        DeviceMotionEvent.requestPermission()
+          .then(state => {
+            if (state === 'granted') {
+              startMotionListener();
+              toast('Motion sensors connected', 'success');
+            } else {
+              toast('Motion sensor access denied. Steps will not update.', 'warning');
+            }
+          })
+          .catch(err => {
+            console.error('Motion permission error:', err);
+            toast('Failed to initialize motion sensors: ' + err.message, 'error');
+          });
+      } else if (hasMotion) {
+        startMotionListener();
+      } else {
+        toast('Device motion sensors unavailable. Live steps disabled.', 'warning');
+        const alertContainer = document.getElementById('sensor-alert-container');
+        if (alertContainer) alertContainer.style.display = 'flex';
+      }
+    }
+
+    function startGeoListener() {
+      if (mtTrackerState.watchPositionId) navigator.geolocation.clearWatch(mtTrackerState.watchPositionId);
+      
+      mtTrackerState.watchPositionId = navigator.geolocation.watchPosition(
+        (position) => {
+          if (mtTrackerState.isPaused || !mtTrackerState.isTracking) return;
+          processGeolocationUpdate(position);
+        },
+        (error) => {
+          console.error('Geolocation error:', error);
+          let msg = 'Location tracking unavailable';
+          if (error.code === error.PERMISSION_DENIED) msg = 'Location permission denied';
+          toast(msg, 'warning');
+        },
+        { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+      );
+    }
+
+    function startMotionListener() {
+      window.removeEventListener('devicemotion', handleMotionEvent);
+      window.addEventListener('devicemotion', handleMotionEvent);
+    }
+
+    function startSensorListeners() {
+      startGeoListener();
+      startMotionListener();
+    }
+
+    function stopSensorListeners() {
+      if (mtTrackerState.watchPositionId) {
+        navigator.geolocation.clearWatch(mtTrackerState.watchPositionId);
+        mtTrackerState.watchPositionId = null;
+      }
+      window.removeEventListener('devicemotion', handleMotionEvent);
+    }
+
+    function handleMotionEvent(event) {
+      if (mtTrackerState.isPaused || !mtTrackerState.isTracking) return;
+
+      const x = event.acceleration?.x || event.accelerationIncludingGravity?.x || 0;
+      const y = event.acceleration?.y || event.accelerationIncludingGravity?.y || 0;
+      const z = event.acceleration?.z || event.accelerationIncludingGravity?.z || 0;
+
+      const M = Math.sqrt(x * x + y * y + z * z);
+
+      if (mtTrackerState.baselineM === 0) {
+        mtTrackerState.baselineM = M;
+      } else {
+        mtTrackerState.baselineM = 0.95 * mtTrackerState.baselineM + 0.05 * M;
+      }
+
+      const V = M - mtTrackerState.baselineM;
+
+      if (V > mtTrackerState.stepThreshold) {
+        if (!mtTrackerState.isAboveThreshold) {
+          const now = Date.now();
+          if (now - mtTrackerState.lastStepTime > mtTrackerState.minStepInterval) {
+            mtTrackerState.steps++;
+            mtTrackerState.lastStepTime = now;
+            mtTrackerState.isAboveThreshold = true;
+            
+            mtTrackerState.estimatedCalories = mtTrackerState.steps * 0.04 * (mtTrackerState.weight / 70);
+
+            const stepsEl = document.getElementById('metric-steps');
+            const calEl = document.getElementById('metric-calories');
+            if (stepsEl) stepsEl.innerText = mtTrackerState.steps;
+            if (calEl) calEl.innerText = Math.round(mtTrackerState.estimatedCalories);
+            
+            const totalStepsToday = (mtTrackerState.todaySummary?.steps || 0) + mtTrackerState.steps;
+            const progressEl = document.getElementById('tracker-progress-bar');
+            const goalEl = document.getElementById('tracker-goal-text');
+            if (goalEl) goalEl.innerText = `${totalStepsToday.toLocaleString()} / ${mtTrackerState.stepGoal.toLocaleString()} steps`;
+            if (progressEl) {
+              const pct = Math.min(100, (totalStepsToday / mtTrackerState.stepGoal) * 100);
+              progressEl.style.width = `${pct}%`;
+            }
+          }
+        }
+      } else if (V < mtTrackerState.stepThreshold * 0.5) {
+        mtTrackerState.isAboveThreshold = false;
+      }
+    }
+
+    function processGeolocationUpdate(position) {
+      const lat = position.coords.latitude;
+      const lng = position.coords.longitude;
+      const accuracy = position.coords.accuracy;
+      const now = Date.now();
+
+      if (accuracy > 50) return;
+
+      if (mtTrackerState.lastLocation) {
+        const prevLat = mtTrackerState.lastLocation.coords.latitude;
+        const prevLng = mtTrackerState.lastLocation.coords.longitude;
+        const prevTime = mtTrackerState.lastLocation.timestamp;
+
+        const distance = calculateHaversineDistance(prevLat, prevLng, lat, lng);
+        const timeDiffHours = (now - prevTime) / 3600000;
+
+        if (distance > 0) {
+          const speedKmh = distance / timeDiffHours;
+
+          if (speedKmh <= 20) {
+            mtTrackerState.distanceKm += distance;
+            const distEl = document.getElementById('metric-distance');
+            if (distEl) distEl.innerText = mtTrackerState.distanceKm.toFixed(2);
+          }
+        }
+      }
+
+      mtTrackerState.lastLocation = { coords: { latitude: lat, longitude: lng }, timestamp: now };
+    }
+
+    function calculateHaversineDistance(lat1, lon1, lat2, lon2) {
+      const R = 6371; 
+      const dLat = deg2rad(lat2 - lat1);
+      const dLon = deg2rad(lon2 - lon1);
+      const a =
+        Math.sin(dLat / 2) * Math.sin(dLat / 2) +
+        Math.cos(deg2rad(lat1)) * Math.cos(deg2rad(lat2)) *
+        Math.sin(dLon / 2) * Math.sin(dLon / 2);
+      const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+      return R * c;
+    }
+
+    function deg2rad(deg) { return deg * (Math.PI / 180); }
+
+    function enableDemoMode() {
+      mtTrackerState.isDemoMode = !mtTrackerState.isDemoMode;
+      
+      if (mtTrackerState.isDemoMode) {
+        toast('Demo Mode activated. Walking simulation enabled.', 'info');
+        if (mtTrackerState.isTracking && !mtTrackerState.isPaused) {
+          stopSensorListeners();
+          startDemoSimulation();
+        }
+      } else {
+        toast('Demo Mode disabled. Re-engaging live sensors.', 'info');
+        if (mtTrackerState.isTracking && !mtTrackerState.isPaused) {
+          if (mtTrackerState.demoIntervalId) {
+            clearInterval(mtTrackerState.demoIntervalId);
+            mtTrackerState.demoIntervalId = null;
+          }
+          requestSensorPermissions();
+        }
+      }
+      syncTrackerUI();
+    }
+
+    function startDemoSimulation() {
+      if (mtTrackerState.demoIntervalId) clearInterval(mtTrackerState.demoIntervalId);
+      
+      mtTrackerState.demoIntervalId = setInterval(() => {
+        if (mtTrackerState.isPaused || !mtTrackerState.isTracking) return;
+
+        const addedSteps = Math.floor(Math.random() * 2) + 1;
+        mtTrackerState.steps += addedSteps;
+
+        const simulatedDistance = addedSteps * 0.0008;
+        mtTrackerState.distanceKm += simulatedDistance;
+
+        mtTrackerState.estimatedCalories = mtTrackerState.steps * 0.04 * (mtTrackerState.weight / 70);
+
+        const stepsEl = document.getElementById('metric-steps');
+        const distEl = document.getElementById('metric-distance');
+        const calEl = document.getElementById('metric-calories');
+        
+        if (stepsEl) stepsEl.innerText = mtTrackerState.steps;
+        if (distEl) distEl.innerText = mtTrackerState.distanceKm.toFixed(2);
+        if (calEl) calEl.innerText = Math.round(mtTrackerState.estimatedCalories);
+
+        const totalStepsToday = (mtTrackerState.todaySummary?.steps || 0) + mtTrackerState.steps;
+        const progressEl = document.getElementById('tracker-progress-bar');
+        const goalEl = document.getElementById('tracker-goal-text');
+        if (goalEl) goalEl.innerText = `${totalStepsToday.toLocaleString()} / ${mtTrackerState.stepGoal.toLocaleString()} steps`;
+        if (progressEl) {
+          const pct = Math.min(100, (totalStepsToday / mtTrackerState.stepGoal) * 100);
+          progressEl.style.width = `${pct}%`;
+        }
+      }, 1000);
+    }
+
+    async function saveTrackingSession() {
+      if (mtTrackerState.steps === 0) {
+        toast('No activity recorded yet', 'warning');
+        return;
+      }
+
+      const durationMinutes = Math.round((mtTrackerState.durationSeconds / 60) * 100) / 100;
+      const dateStr = new Date().toISOString().split('T')[0];
+
+      try {
+        const payload = {
+          steps: mtTrackerState.steps,
+          distanceKm: Math.round(mtTrackerState.distanceKm * 100) / 100,
+          estimatedCalories: Math.round(mtTrackerState.estimatedCalories * 100) / 100,
+          durationMinutes: durationMinutes,
+          date: dateStr
+        };
+
+        const res = await api.saveActivitySession(payload);
+
+        toast('Activity session saved to MongoDB Atlas!', 'success');
+        
+        mtTrackerState.steps = 0;
+        mtTrackerState.distanceKm = 0;
+        mtTrackerState.estimatedCalories = 0;
+        mtTrackerState.durationSeconds = 0;
+        mtTrackerState.lastLocation = null;
+
+        await fetchActivityData();
+      } catch (err) {
+        console.error('Failed to save session:', err);
+        toast(err.message || 'Failed to save activity session', 'error');
+      }
+    }
+
+    async function fetchActivityData() {
+      try {
+        const todayData = await api.getActivityToday();
+        if (todayData && todayData.summary) {
+          mtTrackerState.todaySummary = todayData.summary;
+        }
+
+        const historyData = await api.getActivityHistory();
+        const historyListEl = document.getElementById('tracker-history-list');
+        const historyCardEl = document.getElementById('tracker-history-card');
+
+        if (historyListEl) {
+          const sessions = historyData?.sessions || [];
+          if (sessions.length > 0) {
+            if (historyCardEl) historyCardEl.style.display = 'block';
+            historyListEl.innerHTML = sessions.map(s => {
+              const formattedDate = new Date(s.createdAt).toLocaleDateString(undefined, {
+                month: 'short',
+                day: 'numeric',
+                hour: '2-digit',
+                minute: '2-digit'
+              });
+              return `
+              <div class="tracker-history-item">
+                <div class="history-meta">
+                  <div class="history-date">${formattedDate}</div>
+                  <div class="history-duration">${s.durationMinutes.toFixed(1)} mins duration</div>
+                </div>
+                <div class="history-stats">
+                  <div>Steps: <span class="history-stat-val">${s.steps.toLocaleString()}</span></div>
+                  <div>Dist: <span class="history-stat-val">${s.distanceKm.toFixed(2)} km</span></div>
+                  <div>Cal: <span class="history-stat-val">${Math.round(s.estimatedCalories)} kcal</span></div>
+                </div>
+              </div>
+              `;
+            }).join('');
+          } else {
+            if (historyCardEl) historyCardEl.style.display = 'none';
+          }
+        }
+      } catch (err) {
+        console.error('Failed to fetch activity stats:', err);
+      }
+      
+      syncTrackerUI();
+    }
+
 
     // ══════════════════════════════════════
     // SVG ICON HELPERS
@@ -4003,7 +4803,16 @@
         </div>
       </div>
     </div>` : ''}
+
+    <!-- NEW: Activity & Wellness Tracker -->
+    ${renderActivityTrackerHtml()}
+
   </div>`;
+
+      // Load summary and history session details from backend
+      setTimeout(() => {
+        fetchActivityData();
+      }, 0);
     }
 
     function renderWorkflowStrip(c) {
