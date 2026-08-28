@@ -17,6 +17,13 @@ const caseSchema = new mongoose.Schema(
     /* Uploaded documents */
     prescriptionFile: { type: String }, // file path/URL
     labReportFiles: [{ type: String }],
+    dicomMetadata: {
+      patientName: { type: String },
+      patientId: { type: String },
+      studyDate: { type: String },
+      modality: { type: String },
+      dimensions: { type: String },
+    },
     age: { type: Number, min: 0 },
     gender: { type: String, enum: ['male', 'female', 'other'] },
     symptoms: { type: String, trim: true },

@@ -4905,20 +4905,26 @@
   <div class="page-section">
     <div class="steps">${stepsHtml}</div>
     <div class="card">
-      <div class="card-header"><h3>Upload Prescription</h3></div>
+      <div class="card-header"><h3>Upload Prescription or Medical Scan</h3></div>
       <div class="card-body">
         <div class="upload-zone" id="uploadZone">
-          <input type="file" accept="image/*,.pdf" id="rxFile" onchange="handleFileUpload(event)">
+          <input type="file" accept="image/*,.pdf,.dcm" id="rxFile" onchange="handleFileUpload(event)">
           <div class="upload-icon">${ICONS.upload}</div>
-          <h4>Drop your prescription here</h4>
-          <p>Supports JPG, PNG, PDF &nbsp;·&nbsp; Max 10 MB</p>
+          <h4>Drop your file here</h4>
+          <p>Supports JPG, PNG, PDF, DICOM (.dcm) &nbsp;·&nbsp; Max 10 MB</p>
         </div>
         ${rxFormState.prescriptionDataUrl ? `
         <div class="upload-preview mt-16">
-          <img src="${rxFormState.prescriptionDataUrl}" alt="Prescription preview">
+          ${rxFormState.prescriptionDataUrl === 'pdf' ? `
+            <div class="rx-placeholder" style="background:var(--n-50);border:1px solid var(--border);padding:40px;text-align:center;border-radius:var(--r-sm);color:var(--n-500);font-weight:600;font-size:14px;">📄 PDF Document</div>
+          ` : rxFormState.prescriptionDataUrl === 'dicom' ? `
+            <div class="rx-placeholder" style="background:var(--brand-blue-pale);border:1px dashed var(--brand-blue);padding:40px;text-align:center;border-radius:var(--r-sm);color:var(--brand-blue);font-weight:600;font-size:14px;">🩻 DICOM Medical Scan File</div>
+          ` : `
+            <img src="${rxFormState.prescriptionDataUrl}" alt="Prescription preview">
+          `}
         </div>
         <div style="margin-top:12px;display:flex;align-items:center;gap:8px;">
-          <span class="badge badge-green">✓ Uploaded</span>
+          <span class="badge badge-green">✓ Selected</span>
           <span class="text-sm text-muted">${rxFormState.prescriptionName}</span>
         </div>` : ''}
         <div style="margin-top:24px;display:flex;justify-content:flex-end;">
@@ -4935,6 +4941,8 @@
       rxFormState.prescriptionName = file.name;
       rxFormState.prescriptionFile = file; // keep the real File object for upload
 
+      const isDicom = file.name.toLowerCase().endsWith('.dcm') || file.type === 'application/dicom';
+
       // Local preview only (instant, no server round-trip needed for this)
       if (file.type.startsWith('image/')) {
         const reader = new FileReader();
@@ -4943,6 +4951,9 @@
           renderStep1(document.getElementById('pageBody'), '');
         };
         reader.readAsDataURL(file);
+      } else if (isDicom) {
+        rxFormState.prescriptionDataUrl = 'dicom';
+        renderStep1(document.getElementById('pageBody'), '');
       } else {
         rxFormState.prescriptionDataUrl = 'pdf';
         renderStep1(document.getElementById('pageBody'), '');
@@ -5524,6 +5535,22 @@
     <div class="detail-row"><span class="detail-key">Symptoms</span><span class="detail-val" style="max-width:300px;text-align:right;">${c.symptoms || '—'}</span></div>
     <div class="detail-row"><span class="detail-key">Side Effects</span><span class="detail-val">${c.sideEffects || 'None reported'}</span></div>
   </div>
+  ${c.dicomMetadata && c.dicomMetadata.patientName ? `
+  <div class="detail-section">
+    <div class="detail-section-title">DICOM Scan Metadata</div>
+    <div class="card" style="background: var(--brand-blue-pale); border: 1px solid var(--brand-blue-mid); border-radius: var(--r-sm); padding: 18px; margin-bottom: 16px;">
+      <div style="display:grid; grid-template-columns: 1fr 1fr; gap:12px; margin-bottom: 14px; font-size: 13px;">
+        <div><span class="text-sm text-muted">Patient Name</span><br><strong style="color:var(--n-900);">${c.dicomMetadata.patientName}</strong></div>
+        <div><span class="text-sm text-muted">Patient ID</span><br><strong style="color:var(--n-900);">${c.dicomMetadata.patientId || 'N/A'}</strong></div>
+        <div><span class="text-sm text-muted">Study Date</span><br><strong style="color:var(--n-900);">${c.dicomMetadata.studyDate || 'N/A'}</strong></div>
+        <div><span class="text-sm text-muted">Modality</span><br><strong style="color:var(--n-900);">${c.dicomMetadata.modality || 'N/A'}</strong></div>
+        <div><span class="text-sm text-muted">Dimensions</span><br><strong style="color:var(--n-900);">${c.dicomMetadata.dimensions || 'N/A'}</strong></div>
+      </div>
+      <a href="${c.prescriptionFile}" target="_blank" class="btn btn-primary btn-sm" style="display:inline-flex; align-items:center; gap:6px; text-decoration:none; width: fit-content;">
+        ${ICONS.file || '📄'} Download Scan
+      </a>
+    </div>
+  </div>` : `
   <div class="detail-section">
     <div class="detail-section-title">Prescription</div>
     <div class="rx-image-container">
@@ -5537,7 +5564,7 @@
     <div style="display:flex;gap:8px;flex-wrap:wrap;">
       ${c.ocrResult.medicines.map(m => `<span class="chip">${m}</span>`).join('')}
     </div>
-  </div>`: ''}
+  </div>`: ''}`}
   <div class="detail-section">
     <div class="detail-section-title">Your Decision</div>
     <div class="decision-options">
@@ -5818,13 +5845,29 @@
     <div class="detail-row"><span class="detail-key">Symptoms</span><span class="detail-val" style="max-width:300px;text-align:right;">${c.symptoms || '—'}</span></div>
     <div class="detail-row"><span class="detail-key">Side Effects</span><span class="detail-val">${c.sideEffects || 'None'}</span></div>
   </div>
+  ${c.dicomMetadata && c.dicomMetadata.patientName ? `
+  <div class="detail-section">
+    <div class="detail-section-title">DICOM Scan Metadata</div>
+    <div class="card" style="background: var(--brand-blue-pale); border: 1px solid var(--brand-blue-mid); border-radius: var(--r-sm); padding: 18px; margin-bottom: 16px;">
+      <div style="display:grid; grid-template-columns: 1fr 1fr; gap:12px; margin-bottom: 14px; font-size: 13px;">
+        <div><span class="text-sm text-muted">Patient Name</span><br><strong style="color:var(--n-900);">${c.dicomMetadata.patientName}</strong></div>
+        <div><span class="text-sm text-muted">Patient ID</span><br><strong style="color:var(--n-900);">${c.dicomMetadata.patientId || 'N/A'}</strong></div>
+        <div><span class="text-sm text-muted">Study Date</span><br><strong style="color:var(--n-900);">${c.dicomMetadata.studyDate || 'N/A'}</strong></div>
+        <div><span class="text-sm text-muted">Modality</span><br><strong style="color:var(--n-900);">${c.dicomMetadata.modality || 'N/A'}</strong></div>
+        <div><span class="text-sm text-muted">Dimensions</span><br><strong style="color:var(--n-900);">${c.dicomMetadata.dimensions || 'N/A'}</strong></div>
+      </div>
+      <a href="${c.prescriptionFile}" target="_blank" class="btn btn-primary btn-sm" style="display:inline-flex; align-items:center; gap:6px; text-decoration:none; width: fit-content;">
+        ${ICONS.file || '📄'} Download Scan
+      </a>
+    </div>
+  </div>` : `
   <div class="detail-section">
     <div class="detail-section-title">Prescription</div>
     <div class="rx-image-container">
       ${c.prescriptionFile ? `<img src="${c.prescriptionFile.startsWith('http') ? c.prescriptionFile : `https://meditrust-ek9q.onrender.com${c.prescriptionFile}`}" alt="Prescription">` :
           `<div class="rx-placeholder"><p>No prescription image</p></div>`}
     </div>
-  </div>
+  </div>`}
   <div class="detail-section">
     <div class="detail-section-title">AI Synthesis</div>
     <div style="background:var(--brand-blue-lt);padding:13px 16px;border-radius:var(--r-sm);font-size:13px;color:var(--n-800);border-left:3px solid var(--brand-blue);">
@@ -6296,6 +6339,22 @@
     <p style="font-size:13px;color:var(--n-700);line-height:1.7;">${c.symptoms || '—'}</p>
     ${c.sideEffects ? `<p style="font-size:12px;color:var(--n-400);margin-top:6px;">Side effects: ${c.sideEffects}</p>` : ''}
   </div>
+  ${c.dicomMetadata && c.dicomMetadata.patientName ? `
+  <div class="detail-section">
+    <div class="detail-section-title">DICOM Scan Metadata</div>
+    <div class="card" style="background: var(--brand-blue-pale); border: 1px solid var(--brand-blue-mid); border-radius: var(--r-sm); padding: 18px; margin-bottom: 16px;">
+      <div style="display:grid; grid-template-columns: 1fr 1fr; gap:12px; margin-bottom: 14px; font-size: 13px;">
+        <div><span class="text-sm text-muted">Patient Name</span><br><strong style="color:var(--n-900);">${c.dicomMetadata.patientName}</strong></div>
+        <div><span class="text-sm text-muted">Patient ID</span><br><strong style="color:var(--n-900);">${c.dicomMetadata.patientId || 'N/A'}</strong></div>
+        <div><span class="text-sm text-muted">Study Date</span><br><strong style="color:var(--n-900);">${c.dicomMetadata.studyDate || 'N/A'}</strong></div>
+        <div><span class="text-sm text-muted">Modality</span><br><strong style="color:var(--n-900);">${c.dicomMetadata.modality || 'N/A'}</strong></div>
+        <div><span class="text-sm text-muted">Dimensions</span><br><strong style="color:var(--n-900);">${c.dicomMetadata.dimensions || 'N/A'}</strong></div>
+      </div>
+      <a href="${c.prescriptionFile}" target="_blank" class="btn btn-primary btn-sm" style="display:inline-flex; align-items:center; gap:6px; text-decoration:none; width: fit-content;">
+        ${ICONS.file || '📄'} Download Scan
+      </a>
+    </div>
+  </div>` : `
   ${c.prescriptionFile ? `
   <div class="detail-section">
     <div class="detail-section-title">Prescription</div>
@@ -6309,7 +6368,7 @@
     <div style="display:flex;gap:8px;flex-wrap:wrap;">
       ${c.ocrResult.medicines.map(m => `<span class="chip">${m}</span>`).join('')}
     </div>
-  </div>`: ''}
+  </div>`: ''}`}
   ${c.aiSummary && c.aiSummary.synthesis ? `
   <div class="detail-section">
     <div class="detail-section-title">AI Synthesis</div>

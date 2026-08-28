@@ -10,6 +10,7 @@ const ALLOWED_MIME_TYPES = [
   'image/png',
   'image/webp',
   'application/pdf',
+  'application/dicom',
 ];
 
 const storage = multer.diskStorage({
@@ -22,13 +23,14 @@ const storage = multer.diskStorage({
 });
 
 function fileFilter(req, file, cb) {
-  if (!ALLOWED_MIME_TYPES.includes(file.mimetype)) {
-    return cb(
-      new AppError('Only JPG, PNG, WEBP, and PDF files are allowed', 400),
-      false
-    );
+  const isDicomExt = path.extname(file.originalname).toLowerCase() === '.dcm';
+  if (ALLOWED_MIME_TYPES.includes(file.mimetype) || isDicomExt) {
+    return cb(null, true);
   }
-  cb(null, true);
+  cb(
+    new AppError('Only JPG, PNG, WEBP, PDF, and DICOM (.dcm) files are allowed', 400),
+    false
+  );
 }
 
 const upload = multer({

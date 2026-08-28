@@ -17,9 +17,10 @@ cloudinary.config({
  */
 async function uploadFile(file) {
   try {
+    const isDicom = file.originalname.toLowerCase().endsWith('.dcm');
     const result = await cloudinary.uploader.upload(file.path, {
       folder: 'meditrust/prescriptions',
-      resource_type: 'auto',
+      resource_type: isDicom ? 'raw' : 'auto',
     });
     
     // Clean up local temp file

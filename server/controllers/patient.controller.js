@@ -66,29 +66,83 @@ exports.uploadDocuments = catchAsync(async (req, res, next) => {
 
   const prescriptionFile = req.files?.prescription?.[0];
   const labReportFiles = req.files?.labReports || [];
+  let isDicom = false;
 
   if (prescriptionFile) {
+    const path = require('path');
+    isDicom =
+      prescriptionFile.mimetype === 'application/dicom' ||
+      path.extname(prescriptionFile.originalname).toLowerCase() === '.dcm';
+
+    if (isDicom) {
+      try {
+        const dicomParser = require('dicom-parser');
+        const fs = require('fs');
+
+        // Read buffer from temp upload location
+        const fileBuffer = fs.readFileSync(prescriptionFile.path);
+
+        // Parse DICOM
+        const dataSet = dicomParser.parseDicom(fileBuffer);
+
+        // Extract Patient Name
+        const patientName = dataSet.string('x00100010') || 'Anonymous';
+        // Extract Patient ID
+        const patientId = dataSet.string('x00100020') || 'N/A';
+        // Extract Modality
+        const modality = dataSet.string('x00080060') || 'N/A';
+
+        // Extract and format Study Date
+        const rawStudyDate = dataSet.string('x00080020') || '';
+        let studyDate = rawStudyDate || 'N/A';
+        if (rawStudyDate.length === 8) {
+          studyDate = `${rawStudyDate.substring(0, 4)}-${rawStudyDate.substring(4, 6)}-${rawStudyDate.substring(6, 8)}`;
+        }
+
+        // Extract rows/columns dimensions
+        const rows = dataSet.uint16('x00280010');
+        const columns = dataSet.uint16('x00280011');
+        const dimensions = (rows && columns) ? `${rows} x ${columns}` : 'N/A';
+
+        existingCase.dicomMetadata = {
+          patientName,
+          patientId,
+          studyDate,
+          modality,
+          dimensions,
+        };
+        // Reset ocrResult for DICOM cases
+        existingCase.ocrResult = undefined;
+      } catch (err) {
+        return next(new AppError('Failed to parse DICOM metadata: ' + err.message, 400));
+      }
+    }
+
+    // Upload prescription file (resource_type raw for DICOM, auto for standard images)
     existingCase.prescriptionFile = await storageService.uploadFile(prescriptionFile);
+
+    // If it is NOT a DICOM file, run the regular OCR extraction
+    if (!isDicom) {
+      try {
+        const ocrService = require('../services/ocr');
+        existingCase.ocrResult = await ocrService.extract(existingCase.prescriptionFile);
+        // Clear dicomMetadata for regular prescription uploads
+        existingCase.dicomMetadata = undefined;
+      } catch (error) {
+        existingCase.ocrResult = {
+          medicines: [],
+          dosages: [],
+          rawText: 'OCR processing failed or is pending.',
+          processedAt: new Date()
+        };
+      }
+    }
   }
+
   if (labReportFiles.length > 0) {
     existingCase.labReportFiles = await Promise.all(
       labReportFiles.map((f) => storageService.uploadFile(f))
     );
-  }
-
-  // Run OCR (dummy provider for MVP) as soon as a prescription is uploaded
-  if (prescriptionFile) {
-    try {
-      const ocrService = require('../services/ocr');
-      existingCase.ocrResult = await ocrService.extract(existingCase.prescriptionFile);
-    } catch (error) {
-      existingCase.ocrResult = {
-        medicines: [],
-        dosages: [],
-        rawText: 'OCR processing failed or is pending.',
-        processedAt: new Date()
-      };
-    }
   }
 
   await existingCase.save();
@@ -96,7 +150,10 @@ exports.uploadDocuments = catchAsync(async (req, res, next) => {
   res.status(200).json({
     success: true,
     message: 'Documents uploaded successfully',
-    data: { case: existingCase },
+    data: {
+      case: existingCase,
+      type: isDicom ? 'dicom' : 'prescription'
+    },
   });
 });
 
